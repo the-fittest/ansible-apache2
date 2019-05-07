@@ -1,0 +1,215 @@
+---
+# tasks file for ansible-apache2-ubuntu
+
+- name: Install apache2 packages
+  package:
+    name: "{{ item }}"
+    state: 'present'
+  with_items:
+    - "{{ apache2_packages }}"
+    - "{{ apache2_additional_packages }}"
+
+# CIS - 3.4 Set Ownership on Apache Directories and Files
+- name: Set permissions on apache2 directories (755) and files (644)
+  file:
+    path: "{{ apache2_config_dir }}"
+    owner: root
+    group: root
+    recurse: true
+    mode: u=rwX,g=rX,o=rX
+
+# CIS - 3.9 Secure the PID file
+- name: Set permissions on apache pid file and apache pid folder
+  file:
+    path: "{{ apache2_pid_dir }}"
+    owner: root
+    group: root
+    recurse: true
+    mode: u=rwX,g=rX,o=rX
+
+- name: Check if certificates group exists
+  shell: /usr/bin/getent group | grep "{{ apache2_certificates_group }}"
+  register: does_certificates_group_exist
+  ignore_errors: true
+  check_mode: false
+  changed_when: false
+
+- name: Add secondary Groups to user
+  when: apache2_certificates_group in does_certificates_group_exist.stdout
+  user:
+    name: "{{ apache2_user }}"
+    groups: "{{ apache2_certificates_group }}"
+    append: true
+    state: present
+
+- name: Create directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: 0755
+  with_items:
+    - "{{ apache2_config_paths }}"
+  ignore_errors: true
+
+# --- mods
+
+- name: Create mods
+  when: apache2_mods | length > 0
+  template:
+    src: "{{ item }}"
+    dest: >-
+      {{ apache2_config_dir }}/mods-available/{{ item |
+        basename | replace('.j2', '') }}
+    owner: 'root'
+    group: 'root'
+    mode: 0644
+  with_items:
+    - "{{ apache2_mods }}"
+  notify: 'reload apache2'
+
+- name: Enable modules
+  when: apache2_mods_enabled | length > 0
+  apache2_module:
+    name: "{{ item }}"
+    state: 'present'
+  with_items:
+    - "{{ apache2_mods_enabled }}"
+  notify: 'restart apache2'
+
+- name: Disable modules
+  when: apache2_mods_disabled | length > 0
+  apache2_module:
+    name: "{{ item }}"
+    state: 'absent'
+    force: true
+
+  with_items:
+    - "{{ apache2_mods_disabled }}"
+  notify: 'restart apache2'
+
+- name: Create global config files
+  when: apache2_config_files | length > 0
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: 'root'
+    group: 'root'
+    mode: 0644
+  with_items:
+    - "{{ apache2_config_files }}"
+  notify: 'restart apache2'
+
+# --- configs
+
+- name: Create configs
+  when: apache2_confs | length > 0
+  template:
+    src: "{{ item }}"
+    dest: >-
+      {{ apache2_config_available_path }}/{{ item |
+        basename | replace('.j2', '') }}
+    owner: 'root'
+    group: 'root'
+    mode: 0644
+  with_items:
+    - "{{ apache2_confs }}"
+  notify: 'restart apache2'
+
+- name: Enable configs
+  when: apache2_confs_enabled | length > 0
+  file:
+    path: "{{ apache2_config_enabled_path }}/{{ item }}"
+    src: "{{ apache2_config_available_path }}/{{ item }}"
+    state: 'link'
+    force: true
+  with_items:
+    - "{{ apache2_confs_enabled }}"
+  notify: 'restart apache2'
+
+- name: Disable configs
+  when: apache2_confs_disabled | length > 0
+  file:
+    path: "{{ apache2_config_enabled_path }}/{{ item }}"
+    state: 'absent'
+  with_items:
+    - "{{ apache2_confs_disabled }}"
+  notify: 'restart apache2'
+
+# --- sites
+
+- name: Create sites
+  when: apache2_sites | length > 0
+  template:
+    src: "{{ item }}"
+    dest: >-
+      {{ apache2_sites_available_path }}/{{ item |
+        basename | replace('.j2', '') }}
+    owner: 'root'
+    group: 'root'
+    mode: 0644
+  with_items:
+    - "{{ apache2_sites }}"
+  notify: 'reload apache2'
+
+- name: Enable sites
+  when: apache2_sites_enabled | length > 0
+  file:
+    path: "{{ apache2_sites_enabled_path }}/{{ item }}"
+    src: "{{ apache2_sites_available_path }}/{{ item }}"
+    state: 'link'
+  with_items:
+    - "{{ apache2_sites_enabled }}"
+  notify: 'reload apache2'
+
+- name: Disable sites
+  when: apache2_sites_disabled | length > 0
+  file:
+    path: "{{ apache2_sites_enabled_path }}/{{ item }}"
+    state: 'absent'
+  with_items:
+    - "{{ apache2_sites_disabled }}"
+  notify: 'reload apache2'
+
+- name: Remove insecure default config
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ apache2_config_available_path }}/serve-cgi-bin.conf"
+  notify: 'restart apache2'
+
+- name: Remove default site
+  when: apache2_remove_default_site
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ apache2_config_enabled_path }}/welcome.conf"
+    - "{{ apache2_sites_available_path }}/000-default.conf"
+    - "{{ apache2_sites_available_path }}/default-ssl.conf"
+
+# --- apache user
+
+- name: Check apache user is nologin
+  shell: "grep '/nologin' /etc/passwd | grep {{ apache2_user }} | wc -l"
+  register: result
+  changed_when: false
+  failed_when: result.stdout != "1"
+  ignore_errors: true
+
+- name: Check apache user is locked
+  shell: 'passwd -S {{ apache2_user }} | grep -i " -1" | wc -l'
+  register: result
+  changed_when: false
+  failed_when: result.stdout != "1"
+  ignore_errors: true
+
+# ---
+
+- name: Start and enable apache2
+  service:
+    name: "{{ apache2_service_name }}"
+    enabled: true
+    state: 'started'

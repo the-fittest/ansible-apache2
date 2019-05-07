@@ -1,0 +1,30 @@
+---
+package:
+  apache2:
+    installed: true
+port:
+  tcp:80:
+    listening: true
+    ip:
+      - 0.0.0.0
+  tcp:443:
+    listening: true
+    ip:
+      - 0.0.0.0
+service:
+  apache2:
+    enabled: true
+    running: true
+user:
+  www-data:
+    exists: true
+    groups:
+      - www-data
+    home: /var/www
+    shell: /usr/sbin/nologin
+group:
+  www-data:
+    exists: true
+process:
+  apache2:
+    running: true

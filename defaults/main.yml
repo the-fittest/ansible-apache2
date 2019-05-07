@@ -1,0 +1,73 @@
+---
+# defaults file for ansible-apache2-ubuntu
+
+apache2_remove_default_site: true
+
+apache2_additional_packages: []
+
+apache2_confs: []
+apache2_confs_enabled: []
+apache2_confs_disabled: []
+
+apache2_sites: []
+apache2_sites_enabled: []
+apache2_sites_disabled: []
+
+apache2_mods: []
+apache2_mods_enabled:
+  - ssl
+  - rewrite
+  - headers
+
+apache2_mods_disabled:
+  - mod_dav
+  - mod_dav_fs
+  - mod_status
+  - autoindex
+  - userdir
+  - info
+  - status
+  - cgid
+  - actions
+
+apache2_certificates_group: ssl-cert
+
+ssl_protocol: "ALL -SSLv2 -SSLv3"
+ssl_cipher_suite: "ALL:!EXP:!NULL:!ADH:!LOW:!SSLv2:!SSLv3:!MD5:!RC4"
+ssl_honor_cipher_order: "on"
+
+apache2_packages:
+  - apache2
+  - openssl
+
+apache2_config_files:
+  - { src: 'config/apache2.conf.j2', dest: '/etc/apache2/apache2.conf' }
+  - { src: 'config/envvars.j2', dest: '/etc/apache2/envvars' }
+  - { src: 'config/security.conf.j2', dest: '/etc/apache2/conf-available/security.conf' }
+
+apache2_config_dir: /etc/apache2
+
+apache2_pid_dir: /var/run/apache2
+
+apache2_service_name: apache2
+
+apache2_config_available_path: "{{ apache2_config_dir }}/conf-available"
+apache2_config_enabled_path: "{{ apache2_config_dir }}/conf-enabled"
+
+apache2_sites_available_path: "{{ apache2_config_dir }}/sites-available"
+apache2_sites_enabled_path: "{{ apache2_config_dir }}/sites-enabled"
+
+apache2_mods_available_path: "{{ apache2_config_dir }}/mods-available"
+apache2_mods_enabled_path: "{{ apache2_config_dir }}/mods-enabled"
+
+apache2_config_paths:
+  - "{{ apache2_config_available_path }}"
+  - "{{ apache2_config_enabled_path }}"
+  - "{{ apache2_sites_available_path }}"
+  - "{{ apache2_sites_enabled_path }}"
+  - "{{ apache2_mods_available_path }}"
+  - "{{ apache2_mods_enabled_path }}"
+
+apache2_user: www-data
+
+apache2_server_admin: webmaster@example.com
